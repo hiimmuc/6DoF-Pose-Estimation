@@ -194,7 +194,7 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
-dependencies/*
+dependencies/
 !dependencies/*.sh
 .github/
 src/checkpoints/
