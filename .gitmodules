@@ -1,0 +1,11 @@
+[submodule "sam2"]
+	path = dependencies/sam2
+	url = https://github.com/facebookresearch/sam2
+
+[submodule "mmpose"]
+	path = dependencies/mmpose
+	url = https://github.com/open-mmlab/mmpose.git
+
+[submodule "mmdetection"]
+    path = dependencies/mmdetection
+    url = https://github.com/open-mmlab/mmdetection.git
