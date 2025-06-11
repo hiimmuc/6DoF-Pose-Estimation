@@ -24,6 +24,7 @@ class InputSource:
 
     def __init__(self):
         self.fps = 30  # Default FPS
+        self.frame_count = 0  # Frame counter
 
     def get_frame(self) -> Tuple[bool, np.ndarray]:
         """
@@ -84,6 +85,7 @@ class ImageSource(InputSource):
         # Return the image only once
         if not self.returned:
             self.returned = True
+            self.frame_count += 1
             return True, self.image
         return False, None
 
@@ -111,7 +113,10 @@ class VideoSource(InputSource):
         Returns:
             Tuple of (success flag, frame)
         """
-        return self.cap.read()
+        success, frame = self.cap.read()
+        if success:
+            self.frame_count += 1
+        return success, frame
 
     def release(self) -> None:
         """Release video capture resources"""
@@ -140,7 +145,10 @@ class WebcamSource(InputSource):
         Returns:
             Tuple of (success flag, frame)
         """
-        return self.cap.read()
+        success, frame = self.cap.read()
+        if success:
+            self.frame_count += 1
+        return success, frame
 
     def release(self) -> None:
         """Release webcam resources"""
@@ -206,6 +214,9 @@ class RealSenseSource(InputSource):
             # Convert images to numpy arrays
             depth_image = np.asanyarray(depth_frame.get_data())
             color_image = np.asanyarray(color_frame.get_data())
+
+            # Increment frame counter
+            self.frame_count += 1
 
             return True, color_image, depth_image
         except RuntimeError:

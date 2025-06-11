@@ -6,6 +6,7 @@ pose estimation, and visualization to run the complete pipeline.
 """
 
 import sys
+import time
 from typing import Any, Dict, Optional, Tuple
 
 import cv2
@@ -39,7 +40,8 @@ def process_frame(
     input_source,
     perf_monitor: PerfMonitor,
     args,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray]]:
+    verbose: bool = True,
+) -> Tuple[Dict[str, Any], Tuple[np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray]]]:
     """
     Process a single frame through the 6DoF pose estimation pipeline.
 
@@ -52,9 +54,12 @@ def process_frame(
         input_source: Input source instance
         perf_monitor: Performance monitor instance
         args: Command line arguments
+        verbose: Whether to print detailed information to console
 
     Returns:
-        Tuple of (tracking_vis, segmentation_vis, pose_vis, depth_vis)
+        Tuple of (results_dict, visualization_tuple) where:
+            results_dict: Dictionary containing detection results with 6DoF poses and bounding boxes
+            visualization_tuple: Tuple of (tracking_vis, segmentation_vis, pose_vis, depth_vis)
     """
     # Start frame timing
     perf_monitor.start_frame()
@@ -77,6 +82,13 @@ def process_frame(
     pose_vis = frame.copy()
 
     is_realsense = depth_frame is not None
+
+    # Initialize results dictionary to store 6DoF poses and bounding boxes
+    results_dict = {
+        "objects": [],
+        "timestamp": time.time(),
+        "frame_id": getattr(input_source, "frame_count", 0),
+    }
 
     # Process segmentation masks
     if hasattr(segmentation_results[0], "masks") and segmentation_results[0].masks is not None:
@@ -174,13 +186,43 @@ def process_frame(
 
             # Draw 3D coordinate axes if enabled
             if args.show_axes:
+                # Calculate axis length as 0.2 of the box size
+                try:
+                    # First determine the box dimensions from 3D bbox corners
+                    x_coords = [point[0] for point in bbox_3d]
+                    y_coords = [point[1] for point in bbox_3d]
+                    z_coords = [point[2] for point in bbox_3d]
+
+                    # Calculate the 3D box dimensions
+                    bbox_width = max(x_coords) - min(x_coords)
+                    bbox_height = max(y_coords) - min(y_coords)
+                    bbox_depth = max(z_coords) - min(z_coords)
+
+                    # Calculate box diagonal length
+                    diagonal_length = np.sqrt(bbox_width**2 + bbox_height**2 + bbox_depth**2)
+
+                    # Set axis length to 0.2 of the box size
+                    # Use either the box diagonal or the max dimension (whichever is larger)
+                    max_dimension = max(bbox_width, bbox_height, bbox_depth)
+
+                    dynamic_axis_length = 0.0002 * max(diagonal_length, max_dimension)
+                    # Ensure a reasonable default if calculations result in too small or invalid values
+                    if dynamic_axis_length <= 0.01 or not np.isfinite(dynamic_axis_length):
+                        dynamic_axis_length = 0.1  # Default fallback
+
+                    # Use the calculated length but allow the user to override it with args
+                    axis_length = args.axis_length if args.axis_length > 0 else dynamic_axis_length
+                except Exception:
+                    # Fallback to a reasonable default in case of any calculation errors
+                    axis_length = 0.1
+
                 pose_vis = draw_3d_axes(
                     pose_vis,
                     rvec,
                     tvec,
                     camera_matrix,
                     dist_coeffs,
-                    axis_length=args.axis_length,
+                    axis_length=axis_length,
                 )
 
             # Display pose information
@@ -207,12 +249,38 @@ def process_frame(
                 2,
             )
 
-            # Print to console
-            print(
-                f"Object {i}: Position [X:{x:.3f}m Y:{y:.3f}m Z:{z:.3f}m] "
-                f"Rotation [Roll:{roll:.1f}° Pitch:{pitch:.1f}° Yaw:{yaw:.1f}°] "
-                f"BBox: {box_info['corners'].tolist()}"
-            )
+            # Store object information in results dictionary
+            object_info = {
+                "id": i,
+                "position": {"x": float(x), "y": float(y), "z": float(z)},
+                "rotation": {"roll": float(roll), "pitch": float(pitch), "yaw": float(yaw)},
+                "bbox_2d": box_info["corners"].tolist(),
+                "bbox_3d": bbox_3d.tolist(),
+                "center": box_info["center"],
+                "size": box_info["size"],
+                "angle": float(box_info["angle"]),
+                "class_id": (
+                    int(segmentation_results[0].boxes.cls[i].item())
+                    if hasattr(segmentation_results[0].boxes, "cls")
+                    else -1
+                ),
+                "confidence": (
+                    float(segmentation_results[0].boxes.conf[i].item())
+                    if hasattr(segmentation_results[0].boxes, "conf")
+                    else 1.0
+                ),
+            }
+
+            # Add object to results
+            results_dict["objects"].append(object_info)
+
+            # Print to console if verbose mode is enabled
+            if verbose:
+                print(
+                    f"Object {i}: Position [X:{x:.3f}m Y:{y:.3f}m Z:{z:.3f}m] "
+                    f"Rotation [Roll:{roll:.1f}° Pitch:{pitch:.1f}° Yaw:{yaw:.1f}°] "
+                    f"BBox: {box_info['corners'].tolist()}"
+                )
 
     # Mark end of pose estimation stage
     perf_monitor.mark_stage("pose_estimation")
@@ -228,10 +296,13 @@ def process_frame(
     # End frame timing
     perf_monitor.end_frame()
 
-    return tracking_vis, segmentation_vis, pose_vis, depth_vis
+    # Create tuple of visualization outputs
+    vis_tuple = (tracking_vis, segmentation_vis, pose_vis, depth_vis)
+
+    return results_dict, vis_tuple
 
 
-def run_pipeline():
+def run_pipeline(custom_args=None):
     """
     Run the 6DoF Pose Estimation Pipeline.
 
@@ -249,9 +320,12 @@ def run_pipeline():
        - Segmentation view (top-right)
        - 3D pose visualization (bottom-left)
        - Depth view (bottom-right) or black frame for non-RealSense
+
+    Args:
+        custom_args: Optional custom arguments to override command line parsing
     """
-    # Parse command line arguments
-    args = parse_args()
+    # Parse command line arguments if not provided
+    args = custom_args if custom_args is not None else parse_args()
 
     # Create performance monitor
     perf_monitor = PerfMonitor(history_size=30)
@@ -279,18 +353,18 @@ def run_pipeline():
 
     # Get camera parameters
     camera_matrix, dist_coeffs = input_source.get_camera_params()
-    print(f"Camera matrix:\n{camera_matrix}")
+    print(f"Camera matrix:\n{camera_matrix}")  # Print settings if verbose mode is enabled
+    if args.verbose:
+        print(f"Visualization settings:")
+        print(f"  3D bounding box: {'Enabled' if args.show_3d_box else 'Disabled'}")
+        print(f"  3D coordinate axes: {'Enabled' if args.show_axes else 'Disabled'}")
+        print(f"  Verbose output: {'Enabled' if args.verbose else 'Disabled'}")
 
-    # Print visualization settings
-    print(f"Visualization settings:")
-    print(f"  3D bounding box: {'Enabled' if args.show_3d_box else 'Disabled'}")
-    print(f"  3D coordinate axes: {'Enabled' if args.show_axes else 'Disabled'}")
-
-    # Print bounding box mode (only relevant for RealSense)
-    if args.input == "realsense":
-        print(
-            f"  3D bounding box mode: {'Enhanced (with depth map)' if args.use_enhanced_bbox else 'Legacy'}"
-        )
+        # Print bounding box mode (only relevant for RealSense)
+        if args.input == "realsense":
+            print(
+                f"  3D bounding box mode: {'Enhanced (with depth map)' if args.use_enhanced_bbox else 'Legacy'}"
+            )
 
     try:
         # Main processing loop
@@ -307,7 +381,7 @@ def run_pipeline():
                 break
 
             # Process the frame
-            tracking_vis, segmentation_vis, pose_vis, depth_vis = process_frame(
+            results, vis_outputs = process_frame(
                 frame,
                 depth_frame,
                 detector,
@@ -316,10 +390,18 @@ def run_pipeline():
                 input_source,
                 perf_monitor,
                 args,
+                verbose=args.verbose,
             )
+
+            # Extract visualization outputs
+            tracking_vis, segmentation_vis, pose_vis, depth_vis = vis_outputs
 
             # Create grid display
             display = create_grid_display(tracking_vis, segmentation_vis, pose_vis, depth_vis)
+
+            # Optionally print number of detected objects
+            if args.verbose and len(results["objects"]) > 0:
+                print(f"Detected {len(results['objects'])} objects in frame {results['frame_id']}")
 
             # Draw performance statistics
             display = perf_monitor.draw_stats(display)
@@ -358,6 +440,113 @@ def run_pipeline():
         # Release resources
         input_source.release()
         cv2.destroyAllWindows()
+
+
+def estimate_poses(
+    input_source_type: str = "webcam",
+    source_path: str = "0",
+    verbose: bool = False,
+    use_enhanced_bbox: bool = True,
+    **kwargs,
+) -> Dict[str, Any]:
+    """
+    Programmatic API for 6DoF pose estimation without visualization.
+    This function processes a single frame from the specified input and returns pose data.
+
+    Args:
+        input_source_type: Type of input source ("image", "video", "webcam", "realsense")
+        source_path: Path to input source or webcam index
+        verbose: Whether to print detailed output
+        use_enhanced_bbox: Whether to use enhanced 3D bounding box estimation
+        **kwargs: Additional arguments for pose estimation
+
+    Returns:
+        Dictionary containing 6DoF pose and bounding box information
+    """
+    import argparse
+
+    # Create arguments with default values
+    args = argparse.Namespace(
+        input=input_source_type,
+        source=source_path,
+        conf=kwargs.get("conf", 0.5),
+        iou=kwargs.get("iou", 0.5),
+        classes=kwargs.get("classes", [0, 41, 67]),  # person, cup, cell phone
+        tracking_model=kwargs.get("tracking_model", "src/checkpoints/YOLO/yolo11n.pt"),
+        segmentation_model=kwargs.get("segmentation_model", "src/checkpoints/YOLO/yolo11n-seg.pt"),
+        axis_length=kwargs.get("axis_length", 0),  # Default to auto-sizing (0.2 of box size)
+        box_height=kwargs.get("box_height", 15.0),
+        max_box_height=kwargs.get("max_box_height", 50.0),
+        show_3d_box=kwargs.get("show_3d_box", False),
+        show_axes=kwargs.get("show_axes", True),
+        use_enhanced_bbox=use_enhanced_bbox,
+        verbose=verbose,
+    )
+
+    # Create performance monitor
+    perf_monitor = PerfMonitor(history_size=10)
+
+    # Create YOLO detector
+    try:
+        detector = YOLODetector(
+            tracking_model_path=args.tracking_model,
+            segmentation_model_path=args.segmentation_model,
+            conf_threshold=args.conf,
+            iou_threshold=args.iou,
+            classes=args.classes,
+        )
+    except Exception as e:
+        if verbose:
+            print(f"Error loading YOLO models: {e}")
+        return {"error": f"Error loading YOLO models: {str(e)}", "objects": []}
+
+    # Create input source
+    try:
+        input_source = create_input_source(args.input, args.source)
+    except (ValueError, ImportError) as e:
+        if verbose:
+            print(f"Error creating input source: {str(e)}")
+        return {"error": f"Error creating input source: {str(e)}", "objects": []}
+
+    # Get camera parameters
+    camera_matrix, dist_coeffs = input_source.get_camera_params()
+
+    try:
+        # Get frame
+        if isinstance(input_source, RealSenseSource):
+            success, frame, depth_frame = input_source.get_frame()
+        else:
+            success, frame = input_source.get_frame()
+            depth_frame = None
+
+        if not success:
+            return {"error": "Failed to get frame", "objects": []}
+
+        # Process frame
+        results, _ = process_frame(
+            frame,
+            depth_frame,
+            detector,
+            camera_matrix,
+            dist_coeffs,
+            input_source,
+            perf_monitor,
+            args,
+            verbose=verbose,
+        )
+
+        # Clean up resources
+        input_source.release()
+
+        return results
+
+    except Exception as e:
+        if verbose:
+            print(f"Error during processing: {str(e)}")
+            import traceback
+
+            traceback.print_exc()
+        return {"error": f"Error during processing: {str(e)}", "objects": []}
 
 
 # Command-line entry point

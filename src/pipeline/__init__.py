@@ -14,7 +14,7 @@ from .input_sources import (
     WebcamSource,
     create_input_source,
 )
-from .main import run_pipeline
+from .main import estimate_poses, run_pipeline
 from .pose_estimation import (
     compute_3d_pose,
     create_3d_bbox,
@@ -34,6 +34,7 @@ from .visualization import (
 
 __all__ = [
     "run_pipeline",
+    "estimate_poses",
     "InputSource",
     "ImageSource",
     "VideoSource",

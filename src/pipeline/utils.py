@@ -175,8 +175,8 @@ def parse_args():
     parser.add_argument(
         "--axis-length",
         type=float,
-        default=0.1,
-        help="Length of 3D coordinate axes visualization in meters",
+        default=0,
+        help="Length of 3D coordinate axes visualization in meters. Set to 0 for auto-sizing (0.2 of box size)",
     )
     parser.add_argument(
         "--box-height",
@@ -225,6 +225,18 @@ def parse_args():
         dest="use_enhanced_bbox",
         action="store_false",
         help="Use legacy 3D bounding box estimation method",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        default=True,
+        help="Print detailed information to console (default: True)",
+    )
+    parser.add_argument(
+        "--quiet",
+        dest="verbose",
+        action="store_false",
+        help="Suppress detailed console output",
     )
 
     return parser.parse_args()
