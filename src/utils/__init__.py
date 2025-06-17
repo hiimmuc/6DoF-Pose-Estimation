@@ -1,3 +1,1 @@
-"""
-Utility functions for 6DoF Pose Estimation
-"""
+"""Utility modules for 6DoF pose estimation pipeline."""

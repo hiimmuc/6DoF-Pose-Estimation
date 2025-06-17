@@ -1,105 +1,119 @@
-# 6 DoF Object Pose Estimation
+# 6DoF Pose Estimation Pipeline
 
-This repository provides a comprehensive pipeline for 6 DoF (Degrees of Freedom) object pose estimation using various methods, with a focus on real-time performance.
+A comprehensive pipeline for performing 6DoF (degrees of freedom) pose estimation using object detection, tracking, segmentation, and depth information.
 
 ## Features
 
-### Enhanced 6DoF Pipeline
+-   Multiple input sources: image, video, webcam, or Intel RealSense camera
+-   YOLO-based object detection and tracking
+-   Instance segmentation for accurate mask generation
+-   3D pose estimation with roll, pitch, and yaw calculation
+-   Performance monitoring for each pipeline stage
+-   Visualization of tracking, segmentation, pose, and depth
 
-The main pipeline (`examples/6dof_pipeline.py`) implements a complete workflow for 6DoF pose estimation with the following capabilities:
+## Installation
 
-1. **Input Options**:
+1. Clone this repository:
 
-    - Webcam
-    - Video file
-    - Image file
-    - Intel RealSense camera (with depth)
+```bash
+git clone <repository-url>
+cd 6DoF-PoseEstimation
+```
 
-2. **Visualization**:
+2. Install dependencies:
 
-    - 2x2 grid display showing:
-        - Tracking view (top-left)
-        - Segmentation view (top-right)
-        - 3D bounding box view (bottom-left)
-        - Depth view (bottom-right) or black frame for non-depth cameras
+```bash
+pip install -r requirements.txt
+```
 
-3. **3D Bounding Box Visualization**:
+3. For Intel RealSense support (optional):
 
-    - Boxes match 2D detected object dimensions
-    - Vertical orientation (90-degree rotation around pitch axis)
-    - Dynamic thickness calculation:
-        - For RealSense: Based on depth difference between center and edge
-        - For regular cameras: Default thickness of 15 units
+```bash
+pip install pyrealsense2
+```
 
-4. **Performance Monitoring**:
-    - Real-time FPS tracking
-    - Processing time for each pipeline stage
-    - Visual performance overlay
+4. Download YOLO models:
+
+```bash
+mkdir -p src/checkpoints/YOLO
+# Download models from Ultralytics or use your own pre-trained models
+```
 
 ## Usage
 
-### Basic Usage
+### Command Line Options
+
+Run the pose estimation pipeline with various input sources:
 
 ```bash
-# Run with webcam
-python examples/6dof_pipeline.py --input webcam
+# Using a webcam (default)
+python examples/pose_estimation_example.py --input webcam --source 0
 
-# Run with RealSense camera
-python examples/6dof_pipeline.py --input realsense
+# Using a video file
+python examples/pose_estimation_example.py --input video --source path/to/video.mp4
 
-# Run with video file
-python examples/6dof_pipeline.py --input video --source path/to/video.mp4
+# Using an image
+python examples/pose_estimation_example.py --input image --source path/to/image.jpg
 
-# Run with image file
-python examples/6dof_pipeline.py --input image --source path/to/image.jpg
+# Using an Intel RealSense camera
+python examples/pose_estimation_example.py --input realsense
+
+# Save output to a video file
+python examples/pose_estimation_example.py --output output.mp4
 ```
 
-### Advanced Options
+### Additional Parameters
 
 ```bash
-# Set confidence threshold
-python examples/6dof_pipeline.py --input webcam --conf 0.6
+# Set detection confidence threshold
+--detection_conf 0.6
 
-# Filter specific classes
-python examples/6dof_pipeline.py --input webcam --classes 0 41 67
+# Set detection IoU threshold
+--detection_iou 0.45
 
-# Customize 3D box height for regular cameras
-python examples/6dof_pipeline.py --input webcam --box-height 20
+# Set segmentation confidence threshold
+--segmentation_conf 0.5
 
-# Set maximum box height for RealSense
-python examples/6dof_pipeline.py --input realsense --max-box-height 40
+# Set segmentation IoU threshold
+--segmentation_iou 0.45
 
-# Change the size of coordinate axes
-python examples/6dof_pipeline.py --input webcam --axis-length 0.15
+# Specify custom model paths
+--tracking_model path/to/tracking/model.pt
+--segmentation_model path/to/segmentation/model.pt
 ```
 
-## Documentation
+## Pipeline Overview
 
--   For more details about 3D bounding box visualization, see [3d_bounding_box_guide.md](./Docs/3d_bounding_box_guide.md)
+The pipeline consists of the following key stages:
 
-## Research Directions
+1. **Input Handling**: Process frames from images, videos, webcams, or RealSense cameras
+2. **Detection and Tracking**: YOLO-based object detection and tracking
+3. **Segmentation**: Generate pixel-wise masks for detected objects
+4. **Depth Processing**: Extract depth information at mask centers
+5. **Pose Estimation**: Calculate 6DoF pose (x, y, z, roll, pitch, yaw)
+6. **Visualization**: Display tracking, segmentation, pose, and depth visualizations
 
-We are investigating the following methods:
+## Output Format
 
-1. Traditional approach:
+The pipeline outputs a list of `PoseResult` objects, each containing:
 
-    - [x] Segment (DL: YOLO) → Get contour → Extract Rotated Boxes → Pose calculation with PnP
-    - [x] Traditional segmentation → Get contour → Extract Rotated Boxes
-    - [x] Segment (SAM2) → Get BBox → Pose calculation with PnP
+-   `object_id`: Tracking ID of the object
+-   `class_id` and `class_name`: Object class information
+-   `confidence`: Detection confidence
+-   `x`, `y`, `z`: 3D position in millimeters
+-   `roll`, `pitch`, `yaw`: Rotation angles in degrees
+-   `bbox_2d`: 2D bounding box coordinates
+-   `bbox_rotated`: Rotated bounding box coordinates
+-   `mask`: Binary segmentation mask
 
-2. RGB-only methods:
+## Examples
 
-    - [ ] PoET
+See the `examples/` directory for usage examples:
 
-3. RGB-D methods:
+-   `pose_estimation_example.py`: Complete example of the pipeline
+-   `yolo_segmentation.py`: Example of YOLO segmentation
+-   `yolo_tracking_loop.py`: Example of YOLO tracking
 
-    - [ ] Any6D
+## License
 
-4. Real-time methods:
-    - [ ] RNNPose
-    - [ ] Yolo v5 6D
-    - [ ] GDRNPP (or Fast version)
-
-## Requirements
-
-See `requirements.txt` for detailed dependencies.
+[Specify your license information here]
