@@ -356,7 +356,7 @@ def get_front_direction(depth_map: np.ndarray, bbox: List[int]) -> Tuple[int, in
 
 
 def generate_3d_box_points(
-    bbox: List[int], depth: float, direction: Tuple[int, int], scale: float = 0.05
+    bbox: List[int], depth: float, direction: Tuple[int, int], scale: float = 0.025
 ) -> np.ndarray:
     """
     Generate points for a 3D bounding box based on 2D box, depth, and direction.
@@ -375,7 +375,14 @@ def generate_3d_box_points(
     offset = int(scale * depth)
 
     # Front face
-    front = np.array([[x1, y1], [x2, y1], [x2, y2], [x1, y2]])
+    front = np.array(
+        [
+            [x1 - dx * offset, y1 - dy * offset],
+            [x2 - dx * offset, y1 - dy * offset],
+            [x2 - dx * offset, y2 - dy * offset],
+            [x1 - dx * offset, y2 - dy * offset],
+        ]
+    )
 
     # Back face offset in direction of dx, dy
     back = np.array(
@@ -393,7 +400,7 @@ def generate_3d_box_points(
 def draw_3d_box(
     image: np.ndarray,
     points: np.ndarray,
-    color: Tuple[int, int, int] = (0, 255, 0),
+    color: Tuple[int, int, int] = (255, 255, 0),
     thickness: int = 2,
 ) -> None:
     """
